@@ -1,0 +1,18 @@
+cdk.out/
+.venv/
+__pycache__/
+*.pyc
+
+# Vendored per-Lambda dependencies (regenerate with lambda/extraction/build.sh)
+lambda/extraction/anthropic*
+lambda/extraction/anyio*
+lambda/extraction/httpx*
+lambda/extraction/httpcore*
+lambda/extraction/h11*
+lambda/extraction/certifi*
+lambda/extraction/distro*
+lambda/extraction/annotated_types*
+lambda/extraction/docstring_parser*
+lambda/extraction/pydantic*
+lambda/extraction/*.dist-info
+lambda/extraction/bin/

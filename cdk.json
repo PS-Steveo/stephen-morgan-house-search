@@ -1,0 +1,21 @@
+{
+  "app": "python3 app.py",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "PROJECT_SPEC.md",
+      "cdk*.json",
+      "requirements*.txt",
+      "**/__init__.py",
+      "**/__pycache__",
+      "tests",
+      ".venv"
+    ]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws"]
+  }
+}

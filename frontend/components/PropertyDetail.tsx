@@ -43,6 +43,8 @@ export function PropertyDetail({ id, onBack }: { id: string; onBack: () => void 
   const [notes, setNotes] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [docType, setDocType] = useState("photo");
+  const [inputMode, setInputMode] = useState<"file" | "paste">("file");
+  const [pastedText, setPastedText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
@@ -120,9 +122,17 @@ export function PropertyDetail({ id, onBack }: { id: string; onBack: () => void 
   const handleUpload = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!session || !property) return;
-    const fileInput = e.currentTarget.elements.namedItem("file") as HTMLInputElement;
-    const file = fileInput.files?.[0];
+
+    let file: File | null = null;
+    if (inputMode === "paste") {
+      if (!pastedText.trim()) return;
+      file = new File([pastedText], `pasted-${docType}-${Date.now()}.txt`, { type: "text/plain" });
+    } else {
+      const fileInput = e.currentTarget.elements.namedItem("file") as HTMLInputElement;
+      file = fileInput.files?.[0] ?? null;
+    }
     if (!file) return;
+
     setUploading(true);
     setError(null);
     try {
@@ -138,7 +148,8 @@ export function PropertyDetail({ id, onBack }: { id: string; onBack: () => void 
         await api.extract(session.idToken, id, docType, key);
         load();
       }
-      fileInput.value = "";
+      setPastedText("");
+      e.currentTarget.reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload didn't go through — try again");
     } finally {
@@ -228,27 +239,64 @@ export function PropertyDetail({ id, onBack }: { id: string; onBack: () => void 
       {isOwner && (
         <Section
           title="Add photos or documents"
-          subtitle="Upload a listing sheet or county report and the details below fill in automatically."
+          subtitle="Upload a listing sheet or county report — or just paste the text — and the details below fill in automatically."
         >
-          <form onSubmit={handleUpload} className="flex flex-wrap items-center gap-2.5">
-            <select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
-            >
-              {DOCUMENT_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <input type="file" name="file" required className="text-sm text-stone-600" />
+          <form onSubmit={handleUpload} className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <select
+                value={docType}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDocType(value);
+                  if (value === "photo") setInputMode("file");
+                }}
+                className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+              >
+                {DOCUMENT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+
+              {docType !== "photo" && (
+                <div className="flex overflow-hidden rounded-lg border border-stone-300 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("file")}
+                    className={`px-3 py-2 ${inputMode === "file" ? "bg-emerald-700 text-white" : "bg-white text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    Upload a file
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("paste")}
+                    className={`px-3 py-2 ${inputMode === "paste" ? "bg-emerald-700 text-white" : "bg-white text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    Paste text
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {inputMode === "paste" && docType !== "photo" ? (
+              <textarea
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+                placeholder="Paste the listing text here — copy it straight from Zillow, Redfin, the MLS sheet, wherever you have it."
+                rows={8}
+                className="w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm focus:border-emerald-600 focus:outline-none"
+              />
+            ) : (
+              <input type="file" name="file" required className="text-sm text-stone-600" />
+            )}
+
             <button
               type="submit"
-              disabled={uploading}
+              disabled={uploading || (inputMode === "paste" && !pastedText.trim())}
               className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
             >
-              {uploading ? "Uploading..." : "Upload"}
+              {uploading ? "Uploading..." : inputMode === "paste" ? "Save text" : "Upload"}
             </button>
           </form>
         </Section>

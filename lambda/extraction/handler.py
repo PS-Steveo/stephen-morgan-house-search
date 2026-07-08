@@ -120,8 +120,19 @@ def lambda_handler(event, context):
         data, content_type = _fetch_file(key)
         client = _get_anthropic_client()
         fields, low_confidence, parse_error = extract_fields(client, data, content_type, file_type)
+    except anthropic.AuthenticationError:
+        # The secret exists but is empty/invalid -- see README.md step 8.
+        # Surfacing the raw SDK message ("invalid x-api-key") to a
+        # non-technical user is more confusing than helpful.
+        return {"statusCode": 500, "body": json.dumps({
+            "error": "The house-search app isn't set up to read documents yet "
+                     "(no Anthropic API key). Ask whoever manages the AWS account to add one."
+        })}
     except Exception as exc:  # noqa: BLE001
-        return {"statusCode": 500, "body": json.dumps({"error": str(exc)})}
+        return {"statusCode": 500, "body": json.dumps({
+            "error": "Something went wrong reading that document. You can still fill in the numbers by hand below.",
+            "detail": str(exc),
+        })}
 
     schema = FIELD_SCHEMAS.get(file_type, FIELD_SCHEMAS["mls"])
     key_fields_missing_or_flagged = [

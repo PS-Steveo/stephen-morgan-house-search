@@ -32,6 +32,18 @@ jobs:
       - name: Vendor extraction Lambda dependencies
         run: ./lambda/extraction/build.sh
 
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (static export)
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_USER_POOL_ID: ${{ vars.NEXT_PUBLIC_USER_POOL_ID }}
+          NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ vars.NEXT_PUBLIC_USER_POOL_CLIENT_ID }}
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

@@ -12,6 +12,9 @@ from aws_cdk import (
     aws_apigatewayv2_authorizers as authorizers,
     aws_iam as iam,
     aws_secretsmanager as secretsmanager,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as origins,
+    aws_s3_deployment as s3deploy,
 )
 from constructs import Construct
 
@@ -191,10 +194,22 @@ class HouseSearchStack(Stack):
         api_integration = integrations.HttpLambdaIntegration("ApiIntegration", api_fn)
         extraction_integration = integrations.HttpLambdaIntegration("ExtractionIntegration", extraction_fn)
 
+        # Explicit methods, NOT HttpMethod.ANY -- ANY expands to include
+        # OPTIONS, which would attach the Cognito authorizer to CORS
+        # preflight requests and break them (browsers send unauthenticated
+        # OPTIONS preflights). Leaving OPTIONS unmatched lets HttpApi's
+        # built-in cors_preflight handle it instead.
+        api_methods = [
+            apigwv2.HttpMethod.GET,
+            apigwv2.HttpMethod.POST,
+            apigwv2.HttpMethod.PATCH,
+            apigwv2.HttpMethod.PUT,
+            apigwv2.HttpMethod.DELETE,
+        ]
         for path in ["/properties", "/properties/{proxy+}", "/locations", "/locations/{proxy+}", "/weights"]:
             http_api.add_routes(
                 path=path,
-                methods=[apigwv2.HttpMethod.ANY],
+                methods=api_methods,
                 integration=api_integration,
                 authorizer=authorizer,
             )
@@ -207,6 +222,44 @@ class HouseSearchStack(Stack):
         )
 
         # ------------------------------------------------------------------
+        # Frontend hosting -- S3 (private, OAC-only) + CloudFront.
+        # The Next.js static export (frontend/out) is deployed as part of
+        # this same `cdk deploy` via BucketDeployment, so no extra AWS
+        # permissions are needed beyond what the CDK bootstrap roles
+        # already grant the deploying principal.
+        # ------------------------------------------------------------------
+        frontend_bucket = s3.Bucket(
+            self, "FrontendBucket",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,  # regenerable static assets, unlike the data resources above
+            auto_delete_objects=True,
+        )
+
+        distribution = cloudfront.Distribution(
+            self, "FrontendDistribution",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=origins.S3BucketOrigin.with_origin_access_control(frontend_bucket),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            ),
+            default_root_object="index.html",
+            error_responses=[
+                cloudfront.ErrorResponse(
+                    http_status=404, response_http_status=200, response_page_path="/404.html",
+                ),
+            ],
+            comment="House search frontend",
+        )
+
+        s3deploy.BucketDeployment(
+            self, "FrontendDeployment",
+            sources=[s3deploy.Source.asset("frontend/out")],
+            destination_bucket=frontend_bucket,
+            distribution=distribution,
+            distribution_paths=["/*"],
+        )
+
+        # ------------------------------------------------------------------
         # Outputs
         # ------------------------------------------------------------------
         CfnOutput(self, "ApiUrl", value=http_api.api_endpoint)
@@ -214,3 +267,4 @@ class HouseSearchStack(Stack):
         CfnOutput(self, "UserPoolClientId", value=user_pool_client.user_pool_client_id)
         CfnOutput(self, "UploadsBucketName", value=uploads_bucket.bucket_name)
         CfnOutput(self, "AnthropicSecretArn", value=anthropic_secret.secret_arn)
+        CfnOutput(self, "FrontendUrl", value=f"https://{distribution.distribution_domain_name}")

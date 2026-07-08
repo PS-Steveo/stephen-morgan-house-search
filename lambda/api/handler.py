@@ -205,13 +205,30 @@ def archive_property(property_id):
 def presigned_upload_url(property_id, body):
     file_type = body.get("file_type", "photo")  # photo | mls | gis | detailed | permit
     file_name = body.get("file_name", f"{uuid.uuid4()}.pdf")
+    # Must match the Content-Type header the client actually sends on the PUT --
+    # S3 includes whatever Content-Type is on the real request when it verifies
+    # the signature, so if it's not part of what we signed here, the upload
+    # gets rejected with SignatureDoesNotMatch.
+    content_type = body.get("content_type") or "application/octet-stream"
     key = f"properties/{property_id}/{file_type}/{file_name}"
     url = s3.generate_presigned_url(
         "put_object",
-        Params={"Bucket": UPLOADS_BUCKET, "Key": key},
+        Params={"Bucket": UPLOADS_BUCKET, "Key": key, "ContentType": content_type},
         ExpiresIn=300,
     )
     return _response(200, {"upload_url": url, "key": key})
+
+
+def presigned_download_url(qs):
+    key = (qs or {}).get("key")
+    if not key:
+        return _response(400, {"error": "key query parameter required"})
+    url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": UPLOADS_BUCKET, "Key": key},
+        ExpiresIn=300,
+    )
+    return _response(200, {"download_url": url})
 
 
 def list_locations():
@@ -249,12 +266,24 @@ def put_weights(body):
     return _response(200, config)
 
 
+def _role(event):
+    """custom:role comes through as a Cognito JWT claim on authenticated
+    requests. Missing/unset defaults to viewer (fail closed), not owner."""
+    claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
+    return claims.get("custom:role", "viewer")
+
+
 def lambda_handler(event, context):
     method = event["requestContext"]["http"]["method"]
     path = event["requestContext"]["http"]["path"]
     parts = [p for p in path.strip("/").split("/") if p]
     qs = event.get("queryStringParameters") or {}
     body = json.loads(event["body"]) if event.get("body") else {}
+
+    # Viewers (realtor, loan officer) get read-only access -- they can see
+    # everything owners see, including weights, but can't change anything.
+    if method != "GET" and _role(event) != "owner":
+        return _response(403, {"error": "read-only access for this account"})
 
     try:
         if parts == ["properties"] and method == "GET":
@@ -269,6 +298,8 @@ def lambda_handler(event, context):
             return archive_property(parts[1])
         if len(parts) == 3 and parts[0] == "properties" and parts[2] == "files" and method == "POST":
             return presigned_upload_url(parts[1], body)
+        if len(parts) == 3 and parts[0] == "properties" and parts[2] == "files" and method == "GET":
+            return presigned_download_url(qs)
 
         if parts == ["locations"] and method == "GET":
             return list_locations()

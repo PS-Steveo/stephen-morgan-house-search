@@ -119,12 +119,11 @@ Everything requires a Cognito-authenticated request.
 
 ## Open items (not yet built)
 
-- **Permission granularity.** Cognito has a `custom:role` attribute
-  (`owner`/`viewer`) provisioned, but the API doesn't check it yet --
-  right now anyone with valid credentials can edit anything. Before
-  giving your realtor and loan officer accounts, decide: do they get
-  read-only, and should the weight config be hidden from them
-  entirely (it telegraphs your negotiating priorities)?
+- ~~**Permission granularity.**~~ Resolved: `custom:role` is enforced
+  in `lambda/api/handler.py` -- `viewer` accounts (realtor, loan
+  officer) get read access to everything, including weights, but any
+  non-GET request is rejected with 403. Missing/unset role defaults to
+  viewer (fail closed).
 - **Location description (item 5).** Still undecided whether this is
   free-text notes, a pulled signal (CrimeGrade-style, matching your
   existing safety scoring), or both.

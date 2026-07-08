@@ -23,7 +23,12 @@ export interface Property {
   photo_keys: string[];
   score: number | null;
   subscores: Record<string, number>;
+  lat?: number;
+  lng?: number;
+  votes: Record<string, Vote>;
 }
+
+export type Vote = "yes" | "maybe" | "no" | "more_info";
 
 export interface Bounds {
   [factor: string]: { best: number; worst: number };
@@ -144,4 +149,14 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
+
+  castVote: (idToken: string, propertyId: string, vote: Vote) =>
+    apiFetch<{ property_id: string; votes: Record<string, Vote> }>(
+      idToken,
+      `/properties/${propertyId}/vote`,
+      { method: "PUT", body: JSON.stringify({ vote }) }
+    ),
+
+  getMapsKey: (idToken: string) =>
+    apiFetch<{ api_key: string; region: string }>(idToken, "/maps-key"),
 };

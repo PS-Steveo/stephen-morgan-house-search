@@ -206,7 +206,7 @@ class HouseSearchStack(Stack):
             apigwv2.HttpMethod.PUT,
             apigwv2.HttpMethod.DELETE,
         ]
-        for path in ["/properties", "/properties/{proxy+}", "/locations", "/locations/{proxy+}", "/weights"]:
+        for path in ["/properties", "/properties/{proxy+}", "/locations", "/locations/{proxy+}", "/weights", "/maps-key"]:
             http_api.add_routes(
                 path=path,
                 methods=api_methods,
@@ -258,6 +258,26 @@ class HouseSearchStack(Stack):
             distribution=distribution,
             distribution_paths=["/*"],
         )
+
+        # ------------------------------------------------------------------
+        # Maps -- an Amazon Location API key scoped to read-only map-tile
+        # actions, referer-locked to this CloudFront domain. CloudFormation
+        # can't create AWS::Location::APIKey in this account (the exec role
+        # hits an "no resource-based policy allows the action" error from
+        # the geo-maps handler regardless of IAM permissions -- a CFN
+        # resource-type quirk, not an access problem: creating the same key
+        # directly via the CLI with the same role's permissions works
+        # fine). So the key is created once out-of-band via the CLI --
+        # see README.md -- and CDK only grants the Lambda permission to
+        # read its value at request time (GET /maps-key hands it to the
+        # frontend, rather than baking it into the static build).
+        # ------------------------------------------------------------------
+        maps_key_name = "house-search-maps-key"
+        api_fn.add_environment("MAPS_KEY_NAME", maps_key_name)
+        api_fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["geo:DescribeKey"],
+            resources=[f"arn:aws:geo:{self.region}:{self.account}:api-key/{maps_key_name}"],
+        ))
 
         # ------------------------------------------------------------------
         # Outputs

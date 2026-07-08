@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { api, Property } from "@/lib/api";
+import { api, Property, Vote } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { VoteBadges, VoteButtons } from "./VoteTiles";
 
 const DOCUMENT_TYPES = [
   { value: "mls", label: "MLS sheet" },
@@ -79,6 +80,12 @@ export function PropertyDetail({ id, onBack }: { id: string; onBack: () => void 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     }
+  };
+
+  const handleVote = async (vote: Vote) => {
+    if (!session) return;
+    const res = await api.castVote(session.idToken, id, vote);
+    setProperty((prev) => (prev ? { ...prev, votes: res.votes } : prev));
   };
 
   const handleArchive = async () => {
@@ -162,6 +169,11 @@ export function PropertyDetail({ id, onBack }: { id: string; onBack: () => void 
           ))}
         </div>
       )}
+
+      <div className="space-y-2">
+        <VoteBadges votes={property.votes} />
+        <VoteButtons currentVote={session ? property.votes?.[session.email] : undefined} onVote={handleVote} />
+      </div>
 
       <form onSubmit={saveFields} className="space-y-3">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

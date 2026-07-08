@@ -133,11 +133,21 @@ Everything requires a Cognito-authenticated request.
   entirely.
 - **Permit-vs-MLS cross-check** (flag "new roof 2023" claims that
   don't have a matching permit).
-- **Distance-to-locations wiring** -- the Location Service IAM
-  permissions and API calls exist in `lambda/api`, but no route
-  triggers them automatically yet when a property is added.
+- ~~**Geocoding on property create.**~~ Resolved: `create_property` in
+  `lambda/api/handler.py` calls `geo-places:Geocode` on the address and
+  stores `lat`/`lng`, best-effort (a bad address still creates the
+  property, it just won't appear on the map). Properties created before
+  this shipped don't have `lat`/`lng` retroactively.
+- **Commute-distance wiring** -- still open. Geocoding happens, and the
+  `geo-routes:CalculateRouteMatrix` IAM permission exists in
+  `lambda/api`, but nothing yet calls it against the saved `Locations`
+  list to populate `commute_minutes` automatically.
 - **Data lifecycle** -- what happens to a property's record after you
   close. Archive is already there (`status=archived`); nothing
   auto-archives yet.
-- **Frontend** -- everything above is backend. Weight sliders, the
-  property comparison view, photo gallery, and the upload UI are next.
+- ~~**Frontend.**~~ Resolved: Next.js static export in `frontend/`,
+  deployed via CloudFront. Property tiles with live scoring and
+  yes/maybe/no/need-info voting (owners only cast votes; viewers see
+  them), a satellite map (Amazon Location `geo-maps`, markers geocoded
+  on create), weight sliders, locations editor, upload + extraction
+  flow, photo gallery.

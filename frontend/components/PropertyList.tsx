@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { api, Property } from "@/lib/api";
+import { api, Property, Vote } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { VoteBadges, VoteButtons } from "./VoteTiles";
 
 const EXTRACTION_LABEL: Record<Property["extraction_status"], string> = {
   pending: "Pending",
@@ -29,6 +30,18 @@ export function PropertyList({ onSelect }: { onSelect: (id: string) => void }) {
   };
 
   useEffect(load, [session]);
+
+  const handleVote = async (propertyId: string, vote: Vote) => {
+    if (!session) return;
+    try {
+      const res = await api.castVote(session.idToken, propertyId, vote);
+      setProperties((prev) =>
+        prev.map((p) => (p.property_id === propertyId ? { ...p, votes: res.votes } : p))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save vote");
+    }
+  };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -71,28 +84,33 @@ export function PropertyList({ onSelect }: { onSelect: (id: string) => void }) {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {properties.map((p) => (
-          <button
-            key={p.property_id}
-            onClick={() => onSelect(p.property_id)}
-            className="rounded border p-4 text-left hover:border-black"
-          >
-            <div className="flex items-start justify-between">
-              <span className="font-medium">{p.address}</span>
-              <span className="text-lg font-semibold">
-                {p.score !== null ? Math.round(p.score) : "--"}
-              </span>
+          <div key={p.property_id} className="rounded border p-4 hover:border-black">
+            <div onClick={() => onSelect(p.property_id)} className="cursor-pointer">
+              <div className="flex items-start justify-between">
+                <span className="font-medium">{p.address}</span>
+                <span className="text-lg font-semibold">
+                  {p.score !== null ? Math.round(p.score) : "--"}
+                </span>
+              </div>
+              <div className="mt-2 text-sm text-gray-500">
+                {p.price ? `$${p.price.toLocaleString()}` : "No price yet"}
+                {p.total_sqft ? ` · ${p.total_sqft.toLocaleString()} sqft` : ""}
+              </div>
+              <div className="mt-1 text-xs text-gray-400">
+                {EXTRACTION_LABEL[p.extraction_status]}
+                {p.extraction_status === "needs_review" && (
+                  <span className="ml-1 text-amber-600">-- check extracted fields</span>
+                )}
+              </div>
             </div>
-            <div className="mt-2 text-sm text-gray-500">
-              {p.price ? `$${p.price.toLocaleString()}` : "No price yet"}
-              {p.total_sqft ? ` · ${p.total_sqft.toLocaleString()} sqft` : ""}
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <VoteBadges votes={p.votes} />
+              <VoteButtons
+                currentVote={session ? p.votes?.[session.email] : undefined}
+                onVote={(vote) => handleVote(p.property_id, vote)}
+              />
             </div>
-            <div className="mt-1 text-xs text-gray-400">
-              {EXTRACTION_LABEL[p.extraction_status]}
-              {p.extraction_status === "needs_review" && (
-                <span className="ml-1 text-amber-600">-- check extracted fields</span>
-              )}
-            </div>
-          </button>
+          </div>
         ))}
       </div>
 

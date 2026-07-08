@@ -22,11 +22,16 @@ import boto3
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
+geo_places = boto3.client("geo-places")
+location_client = boto3.client("location")  # classic API -- used only for DescribeKey
 
 properties_table = dynamodb.Table(os.environ["PROPERTIES_TABLE"])
 locations_table = dynamodb.Table(os.environ["LOCATIONS_TABLE"])
 config_table = dynamodb.Table(os.environ["CONFIG_TABLE"])
 UPLOADS_BUCKET = os.environ["UPLOADS_BUCKET"]
+MAPS_KEY_NAME = os.environ.get("MAPS_KEY_NAME")
+
+VALID_VOTES = ("yes", "maybe", "no", "more_info")
 
 DEFAULT_CONFIG = {
     "config_id": "default",
@@ -148,18 +153,41 @@ def list_properties(qs):
     return _response(200, {"properties": items, "count": len(items)})
 
 
+def geocode_address(address):
+    """Best-effort -- a property with a bad/unrecognized address still gets
+    created, it just won't show up on the map until lat/lng are set some
+    other way (e.g. a future manual override)."""
+    if not address:
+        return None, None
+    try:
+        resp = geo_places.geocode(QueryText=address, MaxResults=1)
+        items = resp.get("ResultItems") or []
+        if not items:
+            return None, None
+        lng, lat = items[0]["Position"]  # Amazon Location returns [lng, lat]
+        return lat, lng
+    except Exception:  # noqa: BLE001 -- geocoding failure shouldn't block property creation
+        return None, None
+
+
 def create_property(body):
     now = int(time.time())
     property_id = str(uuid.uuid4())
+    address = body.get("address", "")
+    lat, lng = geocode_address(address)
     item = {
         "property_id": property_id,
         "status": "active",
         "added_date": str(now),
-        "address": body.get("address", ""),
+        "address": address,
         "notes": body.get("notes", ""),
         "extraction_status": "pending",
         "photo_keys": [],
+        "votes": {},
     }
+    if lat is not None and lng is not None:
+        item["lat"] = lat
+        item["lng"] = lng
     properties_table.put_item(Item=_to_decimal(item))
     return _response(201, item)
 
@@ -219,6 +247,31 @@ def presigned_upload_url(property_id, body):
     return _response(200, {"upload_url": url, "key": key})
 
 
+def cast_vote(property_id, body, email):
+    vote = body.get("vote")
+    if vote not in VALID_VOTES:
+        return _response(400, {"error": f"vote must be one of {', '.join(VALID_VOTES)}"})
+    resp = properties_table.get_item(Key={"property_id": property_id})
+    item = resp.get("Item")
+    if not item:
+        return _response(404, {"error": "not found"})
+    votes = item.get("votes") or {}
+    votes[email] = vote
+    properties_table.update_item(
+        Key={"property_id": property_id},
+        UpdateExpression="SET votes = :v",
+        ExpressionAttributeValues={":v": votes},
+    )
+    return _response(200, {"property_id": property_id, "votes": votes})
+
+
+def get_maps_key():
+    if not MAPS_KEY_NAME:
+        return _response(500, {"error": "maps key not configured"})
+    resp = location_client.describe_key(KeyName=MAPS_KEY_NAME)
+    return _response(200, {"api_key": resp["Key"], "region": os.environ["AWS_REGION"]})
+
+
 def presigned_download_url(qs):
     key = (qs or {}).get("key")
     if not key:
@@ -273,6 +326,11 @@ def _role(event):
     return claims.get("custom:role", "viewer")
 
 
+def _email(event):
+    claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
+    return claims.get("email", "unknown")
+
+
 def lambda_handler(event, context):
     method = event["requestContext"]["http"]["method"]
     path = event["requestContext"]["http"]["path"]
@@ -300,6 +358,11 @@ def lambda_handler(event, context):
             return presigned_upload_url(parts[1], body)
         if len(parts) == 3 and parts[0] == "properties" and parts[2] == "files" and method == "GET":
             return presigned_download_url(qs)
+        if len(parts) == 3 and parts[0] == "properties" and parts[2] == "vote" and method == "PUT":
+            return cast_vote(parts[1], body, _email(event))
+
+        if parts == ["maps-key"] and method == "GET":
+            return get_maps_key()
 
         if parts == ["locations"] and method == "GET":
             return list_locations()

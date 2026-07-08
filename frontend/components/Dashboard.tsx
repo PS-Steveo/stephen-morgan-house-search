@@ -6,8 +6,9 @@ import { PropertyList } from "./PropertyList";
 import { PropertyDetail } from "./PropertyDetail";
 import { WeightsEditor } from "./WeightsEditor";
 import { LocationsEditor } from "./LocationsEditor";
+import { MapView } from "./MapView";
 
-type View = "properties" | "weights" | "locations";
+type View = "properties" | "map" | "weights" | "locations";
 
 export function Dashboard() {
   const { session, signOut } = useAuth();
@@ -31,6 +32,7 @@ export function Dashboard() {
       <header className="mb-6 flex items-center justify-between">
         <nav className="flex gap-2">
           {navItem("properties", "Properties")}
+          {navItem("map", "Map")}
           {navItem("weights", "Weights")}
           {navItem("locations", "Locations")}
         </nav>
@@ -50,6 +52,14 @@ export function Dashboard() {
         ) : (
           <PropertyList onSelect={setSelectedId} />
         ))}
+      {view === "map" && (
+        <MapView
+          onSelect={(id) => {
+            setView("properties");
+            setSelectedId(id);
+          }}
+        />
+      )}
       {view === "weights" && <WeightsEditor />}
       {view === "locations" && <LocationsEditor />}
     </div>

@@ -16,3 +16,10 @@ lambda/extraction/docstring_parser*
 lambda/extraction/pydantic*
 lambda/extraction/*.dist-info
 lambda/extraction/bin/
+
+# Vendored deps for lambda/api (regenerate with lambda/api/build.sh) --
+# everything except the source files we actually wrote.
+lambda/api/*
+!lambda/api/handler.py
+!lambda/api/requirements.txt
+!lambda/api/build.sh

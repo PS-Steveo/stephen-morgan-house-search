@@ -5,6 +5,21 @@ import { CognitoUser } from "amazon-cognito-identity-js";
 import { signIn, completeNewPassword } from "@/lib/auth";
 import { useAuth } from "@/lib/AuthContext";
 
+// Cognito error messages are technical ("User does not exist.") -- translate
+// the common ones into something a non-technical user can act on.
+function friendlyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : "";
+  if (/user does not exist|incorrect username or password/i.test(msg))
+    return "That username or password doesn't look right. Check for typos and try again.";
+  if (/password attempts exceeded/i.test(msg))
+    return "Too many tries — wait a few minutes, then try again.";
+  if (/network/i.test(msg)) return "Couldn't reach the server. Check your internet connection.";
+  return msg || "Something went wrong signing in.";
+}
+
+const inputCls =
+  "w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm focus:border-emerald-600 focus:outline-none";
+
 export function LoginForm() {
   const { setSession } = useAuth();
   const [username, setUsername] = useState("");
@@ -19,14 +34,14 @@ export function LoginForm() {
     setError(null);
     setBusy(true);
     try {
-      const result = await signIn(username, password);
+      const result = await signIn(username.trim(), password);
       if (result.status === "success") {
         setSession(result.session);
       } else {
         setPendingUser(result.cognitoUser);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -41,67 +56,89 @@ export function LoginForm() {
       const session = await completeNewPassword(pendingUser, newPassword);
       setSession(session);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not set new password");
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
   };
 
-  if (pendingUser) {
-    return (
-      <form onSubmit={handleNewPassword} className="mx-auto mt-24 w-full max-w-sm space-y-4">
-        <h1 className="text-xl font-semibold">Set a new password</h1>
-        <p className="text-sm text-gray-500">First sign-in requires a permanent password.</p>
-        <input
-          type="password"
-          placeholder="New password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          className="w-full rounded border px-3 py-2"
-          required
-          minLength={10}
-        />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
-          {busy ? "Setting..." : "Set password"}
-        </button>
-      </form>
-    );
-  }
-
   return (
-    <form onSubmit={handleSignIn} className="mx-auto mt-24 w-full max-w-sm space-y-4">
-      <h1 className="text-xl font-semibold">House Search</h1>
-      <input
-        type="text"
-        placeholder="Username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        className="w-full rounded border px-3 py-2"
-        required
-        autoComplete="username"
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="w-full rounded border px-3 py-2"
-        required
-        autoComplete="current-password"
-      />
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button
-        type="submit"
-        disabled={busy}
-        className="w-full rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-      >
-        {busy ? "Signing in..." : "Sign in"}
-      </button>
-    </form>
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <p className="text-4xl">🏡</p>
+          <h1 className="mt-2 text-2xl font-bold text-stone-900">Stephen &amp; Morgan&apos;s House Search</h1>
+          <p className="mt-1 text-sm text-stone-500">Sign in to see the houses</p>
+        </div>
+
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          {pendingUser ? (
+            <form onSubmit={handleNewPassword} className="space-y-4">
+              <div>
+                <h2 className="font-semibold text-stone-900">Choose your password</h2>
+                <p className="mt-1 text-sm text-stone-500">
+                  This replaces the temporary one from your email. Use at least 10 characters with an
+                  uppercase letter, a lowercase letter, and a number.
+                </p>
+              </div>
+              <input
+                type="password"
+                placeholder="New password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className={inputCls}
+                required
+                minLength={10}
+                autoComplete="new-password"
+              />
+              {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {busy ? "Saving..." : "Save password and sign in"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <label className="block text-sm font-medium text-stone-700">
+                Username
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className={`mt-1 ${inputCls}`}
+                  required
+                  autoComplete="username"
+                />
+              </label>
+              <label className="block text-sm font-medium text-stone-700">
+                Password
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`mt-1 ${inputCls}`}
+                  required
+                  autoComplete="current-password"
+                />
+              </label>
+              {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {busy ? "Signing in..." : "Sign in"}
+              </button>
+              <p className="text-center text-xs text-stone-400">
+                First time? Use the temporary password from your email — you&apos;ll pick your own next.
+              </p>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

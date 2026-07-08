@@ -84,13 +84,14 @@ export function MapView({ onSelect }: { onSelect: (id: string) => void }) {
 
   return (
     <div className="space-y-2">
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {unlocatedCount > 0 && (
-        <p className="text-sm text-gray-500">
-          {unlocatedCount} propert{unlocatedCount === 1 ? "y" : "ies"} without a resolved address, not shown.
-        </p>
-      )}
-      <div ref={containerRef} className="h-[70vh] w-full rounded border" />
+      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <p className="text-sm text-stone-500">
+        Every house you&apos;re considering, on satellite view. Pin colors match the score — green is a
+        great match. Tap a pin for details.
+        {unlocatedCount > 0 &&
+          ` (${unlocatedCount} house${unlocatedCount === 1 ? "" : "s"} couldn't be placed on the map.)`}
+      </p>
+      <div ref={containerRef} className="h-[70vh] w-full overflow-hidden rounded-2xl border border-stone-200 shadow-sm" />
     </div>
   );
 }
